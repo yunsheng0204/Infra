@@ -61,3 +61,37 @@ echo "  DB     : 192.168.0.40"
 echo
 echo "Guests will access Internet via NAT"
 echo "======================================"
+
+
+# ========== create guest VMs ==========
+echo "[INFO] Creating guest VMs (master / worker / db)"
+
+ISO_PATH=/var/lib/libvirt/images/Rocky-9.iso
+DISK_DIR=/var/lib/libvirt/images
+
+create_vm () {
+  NAME=$1
+  IP=$2
+
+  if virsh list --all | grep -q " ${NAME} "; then
+    echo "[SKIP] VM ${NAME} already exists"
+    return
+  fi
+
+  echo "[INFO] Creating VM: ${NAME} (${IP})"
+
+  sudo virt-install \
+    --name ${NAME} \
+    --ram 2048 \
+    --vcpus 2 \
+    --disk path=${DISK_DIR}/${NAME}.qcow2,size=20 \
+    --os-variant rocky9 \
+    --network bridge=${BRIDGE},model=virtio \
+    --graphics none \
+    --console pty,target_type=serial \
+    --cdrom ${ISO_PATH}
+}
+
+create_vm master-01 192.168.0.20
+create_vm worker-01 192.168.0.30
+create_vm db-01     192.168.0.40
