@@ -1,57 +1,63 @@
 #!/bin/bash
-
 set -e
 
-# install virtualization tools
-sudo dnf -y update
-sudo dnf -y groupinstall "Virtualization Host"
+echo "[INFO] Setting up INTERNAL KVM bridge (VM-safe, NAT only)"
+
+# ========== variables ==========
+BRIDGE=br0
+BRIDGE_IP=192.168.0.10/24
+BRIDGE_NET=192.168.0.0/24
+EXT_IFACE=$(ip route show default | awk '{print $5}' | head -n1)
+
+# ========== install packages ==========
+sudo dnf -y install libvirt virt-install bridge-utils dnsmasq iptables-services
 sudo systemctl enable --now libvirtd
-sudo dnf -y install virt-top libguestfs-tools
-lsmod | grep kvm
 
-ethernet_name=$(ls /sys/class/net | grep -E '^(enp|ens|eth)')
+# ========== create linux bridge (NO slave) ==========
+if ! nmcli connection show | grep -q "^${BRIDGE}"; then
+  sudo nmcli connection add type bridge ifname ${BRIDGE} con-name ${BRIDGE}
+fi
 
-# remove existing ethernet connection and set up a bridge network
-sudo nmcli connection show
-sudo nmcli connection delete "$ethernet_name"
-sudo nmcli connection add type bridge con-name br0 ifname br0
-sudo nmcli connection add type bridge-slave ifname "$ethernet_name" master br0
+sudo nmcli connection modify ${BRIDGE} \
+  ipv4.method manual \
+  ipv4.addresses ${BRIDGE_IP} \
+  ipv4.never-default yes \
+  ipv6.method ignore
 
-sudo nmcli connection modify br0 ipv4.addresses 192.168.0.10/24
-sudo nmcli connection modify br0 ipv4.gateway 192.168.0.1
-sudo nmcli connection modify br0 ipv4.dns 192.168.0.1
-sudo nmcli connection modify br0 ipv4.method manual
+sudo nmcli connection up ${BRIDGE}
 
-# bring up bridge connection
-sudo nmcli connection up br0
+# ========== enable IP forward ==========
+echo "[INFO] Enabling IP forward"
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo sed -i 's/^#\?net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/' /etc/sysctl.conf
 
-# basic verification
-echo "=== Bridge status ==="
-ip addr show br0
-bridge link
+# ========== NAT (br0 -> ens18) ==========
+echo "[INFO] Setting up NAT: ${BRIDGE_NET} -> ${EXT_IFACE}"
 
-echo "=== Routing table ==="
-ip route
+sudo iptables -t nat -C POSTROUTING -s ${BRIDGE_NET} -o ${EXT_IFACE} -j MASQUERADE 2>/dev/null \
+  || sudo iptables -t nat -A POSTROUTING -s ${BRIDGE_NET} -o ${EXT_IFACE} -j MASQUERADE
 
-echo "=== Test gateway connectivity ==="
-ping -c 3 192.168.0.1
+sudo iptables -C FORWARD -i ${BRIDGE} -o ${EXT_IFACE} -j ACCEPT 2>/dev/null \
+  || sudo iptables -A FORWARD -i ${BRIDGE} -o ${EXT_IFACE} -j ACCEPT
 
-# enable libvirt bridge networking
-sudo systemctl restart libvirtd
+sudo iptables -C FORWARD -i ${EXT_IFACE} -o ${BRIDGE} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
+  || sudo iptables -A FORWARD -i ${EXT_IFACE} -o ${BRIDGE} -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-# optional: allow bridge traffic through firewall
-# sudo firewall-cmd --permanent --add-service=ssh
-# sudo firewall-cmd --permanent --add-masquerade
-# sudo firewall-cmd --reload
+sudo service iptables save || true
 
-echo "========================================"
-echo "KVM host with bridge br0 is ready"
-echo "Host IP: 192.168.0.10"
+# ========== result ==========
+echo "======================================"
+echo "Internal KVM bridge ready"
 echo
-echo "Next steps:"
-echo "1. Create VM and attach NIC to bridge br0"
-echo "2. Assign VM IPs according to your design:"
-echo "   - master node  : 192.168.0.20"
-echo "   - worker node  : 192.168.0.30"
-echo "   - db / gitlab  : 192.168.0.40"
-echo "========================================"
+echo "Host (this VM):"
+echo "  - External NIC : ${EXT_IFACE} (DHCP, Internet)"
+echo "  - Internal br0 : 192.168.0.10/24"
+echo
+echo "Attach guest VMs to bridge: ${BRIDGE}"
+echo "Guest IP plan:"
+echo "  master : 192.168.0.20"
+echo "  worker : 192.168.0.30"
+echo "  DB     : 192.168.0.40"
+echo
+echo "Guests will access Internet via NAT"
+echo "======================================"
