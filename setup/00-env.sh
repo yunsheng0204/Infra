@@ -5,6 +5,7 @@ set -euo pipefail
 # Network
 # =========
 export NET_CIDR="192.168.8.0/21"
+export NETMASK_CIDR="21"
 export GATEWAY="192.168.8.1"
 export DNS1="8.8.8.8"
 export DNS2="1.1.1.1"
