@@ -2,7 +2,7 @@
 
 ## 系統架構圖
 
-![System Architecture](images/architecture.png)
+![System Architecture](images/架構圖.png)
 
 ## Getting started
 
