@@ -4,17 +4,21 @@ set -euo pipefail
 # =========
 # Network
 # =========
-export NET_CIDR="192.168.8.0/21"
-export NETMASK_CIDR="21"
-export GATEWAY="192.168.8.1"
+# =========
+# Network
+# =========
+export NET_CIDR="210.67.140.0/24"    # 修改為你的子網段
+export NETMASK_CIDR="21"            # 修改為 21
+export GATEWAY="210.67.140.1"       # 修改為正確的閘道
 export DNS1="8.8.8.8"
 export DNS2="1.1.1.1"
 
 # =========
-# Nodes (edit here if your IP differs)
+# Nodes
 # =========
 export MASTER_HOST="master"
-export MASTER_IP="192.168.8.20"
+export MASTER_IP="210.67.140.20"    # 修改為正確的 Master IP
+# 其他節點 (WORKER, DB 等) 也請依照 210.67.140.x 範圍設定，避免衝突
 
 export WORKER_HOST="worker"
 export WORKER_IP="192.168.8.30"
