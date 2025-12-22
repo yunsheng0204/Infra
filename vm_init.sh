@@ -31,15 +31,15 @@ case "$ROLE" in
 esac
 
 GATEWAY="192.168.0.1"
-DNS="8.8.8.8"
+DNS_SERVERS="192.168.0.1 8.8.8.8"
 
 # =========================
-# detect network interface
+# detect primary interface
 # =========================
-IFACE=$(nmcli -t -f DEVICE,TYPE device status | grep ethernet | cut -d: -f1 | head -n1)
+IFACE=$(ip route | awk '/default/ {print $5; exit}')
 
 if [[ -z "$IFACE" ]]; then
-  echo "[ERROR] No ethernet interface found"
+  echo "[ERROR] Cannot detect network interface"
   exit 1
 fi
 
@@ -47,6 +47,8 @@ echo "[INFO] Role      : $ROLE"
 echo "[INFO] Hostname  : $HOSTNAME"
 echo "[INFO] Interface : $IFACE"
 echo "[INFO] IP        : $IP_ADDR"
+echo "[INFO] Gateway   : $GATEWAY"
+echo "[INFO] DNS       : $DNS_SERVERS"
 
 # =========================
 # hostname
@@ -55,22 +57,30 @@ echo "[INFO] Setting hostname"
 hostnamectl set-hostname "$HOSTNAME"
 
 # =========================
-# network (static IP)
+# network (static IP, safe DNS)
 # =========================
-echo "[INFO] Configuring static IP"
+echo "[INFO] Configuring static IP (Proxmox-safe)"
+
+nmcli con show "$IFACE" >/dev/null 2>&1 || {
+  echo "[ERROR] NetworkManager connection not found for $IFACE"
+  exit 1
+}
+
 nmcli con mod "$IFACE" \
   ipv4.method manual \
   ipv4.addresses "$IP_ADDR" \
   ipv4.gateway "$GATEWAY" \
-  ipv4.dns "$DNS"
+  ipv4.dns "$DNS_SERVERS" \
+  ipv4.ignore-auto-dns yes
 
 nmcli con up "$IFACE"
 
 # =========================
-# /etc/hosts
+# /etc/hosts (idempotent)
 # =========================
 echo "[INFO] Updating /etc/hosts"
-cat <<EOF >> /etc/hosts
+
+grep -q "master-01" /etc/hosts || cat <<EOF >> /etc/hosts
 192.168.0.20 master-01
 192.168.0.30 worker-01
 192.168.0.40 db-01
@@ -90,7 +100,7 @@ dnf -y install \
   bash-completion
 
 # =========================
-# disable swap (required by k8s)
+# disable swap (k8s requirement)
 # =========================
 echo "[INFO] Disabling swap"
 swapoff -a
@@ -99,7 +109,8 @@ sed -i '/swap/d' /etc/fstab
 # =========================
 # kernel & sysctl (k8s-ready)
 # =========================
-echo "[INFO] Kernel & sysctl settings"
+echo "[INFO] Kernel & sysctl configuration"
+
 cat <<EOF > /etc/sysctl.d/99-kubernetes.conf
 net.ipv4.ip_forward = 1
 net.bridge.bridge-nf-call-iptables = 1
@@ -110,34 +121,9 @@ modprobe br_netfilter
 sysctl --system
 
 # =========================
-# firewall (lab mode)
+# firewall (lab environment)
 # =========================
-echo "[INFO] Disabling firewalld (lab environment)"
+echo "[INFO] Disabling firewalld (lab only)"
 systemctl disable --now firewalld || true
 
-# =========================
-# role-specific notes
-# =========================
-echo "===================================="
-echo "Initialization complete"
-echo "Hostname : $HOSTNAME"
-echo "IP       : $IP_ADDR"
-echo "Gateway  : $GATEWAY"
-echo
-case "$ROLE" in
-  master)
-    echo "Next step:"
-    echo "  - Install container runtime"
-    echo "  - kubeadm init"
-    ;;
-  worker)
-    echo "Next step:"
-    echo "  - Install container runtime"
-    echo "  - kubeadm join <master>"
-    ;;
-  db)
-    echo "Next step:"
-    echo "  - Install database (MySQL / PostgreSQL)"
-    ;;
-esac
-echo "===================================="
+# ===
