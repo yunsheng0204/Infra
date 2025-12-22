@@ -80,7 +80,7 @@ EOF
 }
 
 base_os_tuning() {
-  dnf -y update
+  # dnf -y update
   dnf -y install curl wget vim git jq bash-completion chrony iproute-tc nfs-utils
 
   timedatectl set-timezone Asia/Taipei || true
