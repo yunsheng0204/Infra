@@ -11,19 +11,57 @@ detect_iface() {
   echo "$iface"
 }
 
-set_static_ip() {
-  local iface="$1" ip="$2"
-  local con
-  con="$(nmcli -t -f NAME,DEVICE con show --active | awk -F: -v d="$iface" '$2==d{print $1; exit}')"
-  if [[ -z "${con}" ]]; then
-    con="$(nmcli -t -f NAME,DEVICE con show | awk -F: -v d="$iface" '$2==d{print $1; exit}')"
-  fi
-  [[ -n "${con}" ]] || { echo "No nmcli connection found for $iface"; exit 1; }
+# set_static_ip() {
+#   local iface="$1" ip="$2"
+#   local con
+#   con="$(nmcli -t -f NAME,DEVICE con show --active | awk -F: -v d="$iface" '$2==d{print $1; exit}')"
+#   if [[ -z "${con}" ]]; then
+#     con="$(nmcli -t -f NAME,DEVICE con show | awk -F: -v d="$iface" '$2==d{print $1; exit}')"
+#   fi
+#   [[ -n "${con}" ]] || { echo "No nmcli connection found for $iface"; exit 1; }
 
-  nmcli con mod "$con" ipv4.method manual ipv4.addresses "${ip}/21" ipv4.gateway "${GATEWAY}" \
-    ipv4.dns "${DNS1} ${DNS2}" ipv4.ignore-auto-dns yes connection.autoconnect yes
-  nmcli con up "$con"
+#   nmcli con mod "$con" ipv4.method manual ipv4.addresses "${ip}/21" ipv4.gateway "${GATEWAY}" \
+#     ipv4.dns "${DNS1} ${DNS2}" ipv4.ignore-auto-dns yes connection.autoconnect yes
+#   nmcli con up "$con"
+# }
+
+set_static_ip() {
+  local iface="$1"
+  local ip="$2"
+
+  # 你已經有的 static connection
+  local con="ens18-static"
+
+  echo "[INFO] Using NetworkManager connection: ${con}"
+
+  # 確認 connection 存在
+  if ! nmcli con show "${con}" &>/dev/null; then
+    echo "[ERROR] Connection ${con} not found, abort to avoid network break"
+    exit 1
+  fi
+
+  # 只設定 IP / Gateway（不碰 DNS）
+  nmcli con mod "${con}" \
+    ipv4.method manual \
+    ipv4.addresses "${ip}/${NETMASK_CIDR}" \
+    ipv4.gateway "${GATEWAY}" \
+    connection.autoconnect yes
+
+  # 重新啟用連線
+  nmcli con up "${con}"
+
+  # DNS 保險檢查（只補，不覆蓋）
+  if ! grep -q "^nameserver" /etc/resolv.conf; then
+    echo "[WARN] DNS missing, restoring resolv.conf"
+    cat >/etc/resolv.conf <<EOF
+nameserver ${DNS1}
+nameserver ${DNS2}
+EOF
+  fi
+
+  echo "[OK] Network configuration verified"
 }
+
 
 write_hosts() {
   local marker_begin="# BEGIN CLUSTER HOSTS"
