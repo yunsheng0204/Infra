@@ -8,7 +8,7 @@ set -euo pipefail
 # Network
 # =========
 export NET_CIDR="210.67.140.0/24"    # 修改為你的子網段
-export NETMASK_CIDR="21"            # 修改為 21
+export NETMASK_CIDR="24"            # 修改為 24
 export GATEWAY="210.67.140.1"       # 修改為正確的閘道
 export DNS1="8.8.8.8"
 export DNS2="1.1.1.1"
