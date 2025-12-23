@@ -20,7 +20,7 @@ set_static_ip() {
   fi
   [[ -n "${con}" ]] || { echo "No nmcli connection found for $iface"; exit 1; }
 
-  nmcli con mod "$con" ipv4.method manual ipv4.addresses "${ip}/21" ipv4.gateway "${GATEWAY}" \
+  nmcli con mod "$con" ipv4.method manual ipv4.addresses "${ip}/24" ipv4.gateway "${GATEWAY}" \
     ipv4.dns "${DNS1} ${DNS2}" ipv4.ignore-auto-dns yes connection.autoconnect yes
   nmcli con up "$con"
 }
